@@ -2,15 +2,15 @@
 
 You can use this repo as a template for OAuth authentication using Axum and Google OAuth.
 
-The underling database used is SQLite using SQLx, see branch the mongodb for a MongoDB version.
+The underling database used is SQLite using SQLx.
 
-Minijinja is also used as the HTML template system. Moreover, a deployment example with GitHub Actions is provided.
+Askama is also used as the HTML template system. Moreover, a deployment example with GitHub Actions is provided.
 
 ## Live Demo
 
 A live demo of this template is available at:
 
-https://rust-oauth.marcoinacio.com/
+TODO
 
 ## Conventional setup
 
@@ -38,7 +38,7 @@ https://rust-oauth.marcoinacio.com/
       GOOGLE_CLIENT_ID=your_google_oauth_id
       GOOGLE_CLIENT_SECRET=your_google_oauth_secret
 
-* Build your OCI (Docker image) with `docker build -t ghcr.io/randommm/rust-axum-with-google-oauth .`.
+* Build your OCI (Docker image) with `docker build -t ghcr.io/joseburgosguntin/axum-oauth-docker .`.
 
 * Deploy with `docker-compose up`, then just browse your website at `http://localhost:3011`.
 
@@ -46,9 +46,9 @@ https://rust-oauth.marcoinacio.com/
 
 * Get an OAuth Client ID and key at https://console.cloud.google.com/apis/credentials, setup `http://localhost:3011/oauth_return` as an authorised redirect URI.
 
-* Build your OCI (Docker image) with `docker build -t ghcr.io/randommm/rust-axum-with-google-oauth .`.
+* Build your OCI (Docker image) with `docker build -t ghcr.io/joseburgosguntin/axum-oauth-docker .`.
 
-* Deploy with `docker run --env DATABASE_URI="sqlite://db/db.sqlite3" --env GOOGLE_CLIENT_ID=your_google_oauth_id --env GOOGLE_CLIENT_SECRET=your_google_oauth_secret --rm -p 3011:3011 -v db:db ghcr.io/randommm/rust-axum-with-google-oauth`, then just browse your website at `http://localhost:3011`.
+* Deploy with `docker run --env DATABASE_URI="sqlite://db/db.sqlite3" --env GOOGLE_CLIENT_ID=your_google_oauth_id --env GOOGLE_CLIENT_SECRET=your_google_oauth_secret --rm -p 3011:3011 -v db:db ghcr.io/joseburgosguntin/axum-oauth-docker`, then just browse your website at `http://localhost:3011`.
 
 ## Optional extra: production deploy with Nginx
 
@@ -71,14 +71,14 @@ Generate a new token (classic) at https://github.com/settings/tokens/new with `r
 
 Now, place `docker-compose.yml` on your server along with the `.env` and edit the `docker-compose.yml`, change:
 
-      container_name: rust-axum-with-google-oauth
+      container_name: axum-oauth-docker
       build:
           context: .
 
 to:
 
-      container_name: rust-axum-with-google-oauth
-      image:  ghcr.io/put_your_github_username_here/rust-axum-with-google-oauth
+      container_name: axum-oauth-docker
+      image:  ghcr.io/put_your_github_username_here/axum-oauth-docker
 
 Finally, edit your crontab (`crontab -e`) to auto check, pull and deploy changes every 5 minutes:
 
