@@ -1,4 +1,7 @@
-use super::{AppError, UserData};
+use crate::error::Result;
+
+use super::UserData;
+use anyhow::anyhow;
 use axum::{
     extract::{State, TypedHeader},
     headers::Cookie,
@@ -14,11 +17,11 @@ pub async fn inject_user_data<T>(
     cookie: Option<TypedHeader<Cookie>>,
     mut request: Request<T>,
     next: Next<T>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<impl IntoResponse> {
     if let Some(cookie) = cookie {
         if let Some(session_token) = cookie.get("session_token") {
             let session_token: Vec<&str> = session_token.split('_').collect();
-            let query: Result<(i64, i64, String), _> = sqlx::query_as(
+            let query: sqlx::Result<(i64, i64, String)> = sqlx::query_as(
                 r#"SELECT user_id,expires_at,session_token_p2 FROM user_sessions WHERE session_token_p1=?"#,
             )
             .bind(session_token[0])
@@ -41,17 +44,20 @@ pub async fn inject_user_data<T>(
                             let user_id = query.0;
                             let expires_at = query.1;
                             if expires_at > Utc::now().timestamp() {
-                                let query: Result<(String,), _> =
-                                    sqlx::query_as(r#"SELECT email FROM users WHERE id=?"#)
-                                        .bind(user_id)
-                                        .fetch_one(&db_pool)
-                                        .await;
+                                let query: sqlx::Result<(String, String)> = sqlx::query_as(
+                                    r#"SELECT email, picture FROM users WHERE id=?"#,
+                                )
+                                .bind(user_id)
+                                .fetch_one(&db_pool)
+                                .await;
                                 if let Ok(query) = query {
-                                    let user_email = query.0;
-                                    request.extensions_mut().insert(Some(UserData {
+                                    let user_data = UserData {
                                         user_id,
-                                        user_email,
-                                    }));
+                                        user_email: query.0,
+                                        user_picture: query.1,
+                                    };
+                                    request.extensions_mut().insert(Some(user_data.clone()));
+                                    request.extensions_mut().insert(user_data);
                                 }
                             }
                         }
@@ -64,14 +70,11 @@ pub async fn inject_user_data<T>(
     Ok(next.run(request).await)
 }
 
-pub async fn check_auth<T>(
-    request: Request<T>,
-    next: Next<T>,
-) -> Result<impl IntoResponse, AppError> {
+pub async fn check_auth<T>(request: Request<T>, next: Next<T>) -> Result<impl IntoResponse> {
     if request
         .extensions()
         .get::<Option<UserData>>()
-        .ok_or("check_auth: extensions have no UserData")?
+        .ok_or(anyhow!("check_auth: extensions have no UserData"))?
         .is_some()
     {
         Ok(next.run(request).await)

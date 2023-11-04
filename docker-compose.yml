@@ -1,6 +1,6 @@
 services:
-    rust-axum-with-google-oauth:
-        container_name: rust-axum-with-google-oauth
+    axum-oauth-docker:
+        container_name: axum-oauth-docker
         build:
             context: .
         ports:

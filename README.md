@@ -18,13 +18,13 @@ https://rust-oauth.marcoinacio.com/
 
 * Create file named `.env` at the root of the repository (same folder as the README.md), containing:
 
-      DATABASE_URI=sqlite://db/db.sqlite3
+      DATABASE_URL=sqlite://db/db.sqlite3
       GOOGLE_CLIENT_ID=your_google_oauth_id
       GOOGLE_CLIENT_SECRET=your_google_oauth_secret
 
 * If you don't have `Rust` installed, see `https://rustup.rs`.
 
-* Create the database: `cargo install sqlx-cli && sqlx database create && sqlx migrate run`.
+* Create the database: `cargo install sqlx-cli && sqlx database create`.
 
 * Deploy with `cargo run --release`, then just browse your website at `http://localhost:3011`.
 
@@ -34,7 +34,7 @@ https://rust-oauth.marcoinacio.com/
 
 * Create file named `.env` at the root of the repository (same folder as the README.md), containing:
 
-      DATABASE_URI=sqlite://db/db.sqlite3
+      DATABASE_URL=sqlite://db/db.sqlite3
       GOOGLE_CLIENT_ID=your_google_oauth_id
       GOOGLE_CLIENT_SECRET=your_google_oauth_secret
 

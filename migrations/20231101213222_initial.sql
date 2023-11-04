@@ -1,6 +1,7 @@
 CREATE TABLE "users" (
     "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
-    "email" text NOT NULL UNIQUE
+    "email" text NOT NULL UNIQUE,
+    "picture" text NOT NULL
 );
 CREATE TABLE "user_sessions" (
     "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,

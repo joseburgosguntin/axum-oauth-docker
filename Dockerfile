@@ -41,4 +41,4 @@ RUN cargo build --release --locked
 
 COPY migrations migrations
 
-CMD sqlx database create && sqlx migrate run && cargo run --release --locked
+CMD sqlx database create && cargo run --release --locked
