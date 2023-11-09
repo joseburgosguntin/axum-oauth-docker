@@ -29,7 +29,7 @@ TODO
 
 * In seperate terminal Deploy with `cargo run --release`, then just browse your website at `http://localhost:3000`.
 
-## Setup with Docker Compose (not working, fixing Dockerfile)
+## Setup with Docker Compose
 
 * Get an OAuth Client ID and key at https://console.cloud.google.com/apis/credentials, setup `http://localhost:3000/oauth_return` as an authorised redirect URI.
 
