@@ -20,6 +20,7 @@ pub async fn index<T>(
     Extension(maybe_user_data): Extension<Option<UserData>>,
     request: Request<T>,
 ) -> Index {
+    println!("index");
     let login_return_url = "?return_url=".to_owned() + &*request.uri().to_string();
     Index {
         login_return_url,
@@ -38,6 +39,7 @@ pub async fn about<T>(
     Extension(maybe_user_data): Extension<Option<UserData>>,
     request: Request<T>,
 ) -> About {
+    println!("about");
     let login_return_url = "?return_url=".to_owned() + &*request.uri().to_string();
     About {
         login_return_url,
@@ -46,7 +48,7 @@ pub async fn about<T>(
 }
 
 #[derive(Template)]
-#[template(path = "about.html")]
+#[template(path = "profile.html")]
 pub struct Profile {
     login_return_url: String,
     maybe_user_data: Option<UserData>,
@@ -54,6 +56,7 @@ pub struct Profile {
 }
 
 pub async fn profile<T>(Extension(user_data): Extension<UserData>, request: Request<T>) -> Profile {
+    println!("profile");
     let login_return_url = "?return_url=".to_owned() + &*request.uri().to_string();
     Profile {
         login_return_url,

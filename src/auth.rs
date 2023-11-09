@@ -10,9 +10,10 @@ use anyhow::anyhow;
 use axum::{
     extract::{Extension, Host, Query, State, TypedHeader},
     headers::Cookie,
-    http::Request,
-    response::{IntoResponse, Redirect},
+    http::HeaderName,
+    response::{AppendHeaders, IntoResponse, Redirect},
 };
+use axum_extra::extract::PrivateCookieJar;
 use chrono::Utc;
 use dotenvy::var;
 use oauth2::{
@@ -20,7 +21,7 @@ use oauth2::{
     CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope,
     TokenResponse, TokenUrl,
 };
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -51,7 +52,7 @@ fn get_client(hostname: String) -> Result<BasicClient> {
 pub async fn login(
     Extension(user_data): Extension<Option<UserData>>,
     Query(mut params): Query<HashMap<String, String>>,
-    State(db_pool): State<SqlitePool>,
+    State(db_pool): State<PgPool>,
     Host(hostname): Host,
 ) -> Result<Redirect> {
     if user_data.is_some() {
@@ -75,11 +76,10 @@ pub async fn login(
         .set_pkce_challenge(pkce_code_challenge)
         .url();
 
-    sqlx::query(
+    let b = sqlx::query(
         r#"
-        INSERT INTO oauth2_state_storage 
-        (csrf_state, pkce_code_verifier, return_url) 
-        VALUES (?, ?, ?);"#,
+        INSERT INTO oauth2_state_storage(csrf_state, pkce_code_verifier, return_url) 
+        VALUES ($1, $2, $3)"#,
     )
     .bind(csrf_state.secret())
     .bind(pkce_code_verifier.secret())
@@ -87,15 +87,16 @@ pub async fn login(
     .execute(&db_pool)
     .await?;
 
+    println!("{b:?}");
+
     Ok(Redirect::to(authorize_url.as_str()))
 }
 
-pub async fn oauth_return<T>(
+pub async fn oauth_return(
     Query(mut params): Query<HashMap<String, String>>,
-    State(db_pool): State<SqlitePool>,
+    State(db_pool): State<PgPool>,
     Host(hostname): Host,
-    mut request: Request<T>,
-) -> Result<impl IntoResponse> {
+) -> Result<(AppendHeaders<[(HeaderName, String); 1]>, Redirect)> {
     let state = CsrfToken::new(
         params
             .remove("state")
@@ -108,7 +109,7 @@ pub async fn oauth_return<T>(
     );
 
     let query: (String, String) = sqlx::query_as(
-        r#"DELETE FROM oauth2_state_storage WHERE csrf_state = ? RETURNING pkce_code_verifier,return_url"#,
+        r#"DELETE FROM oauth2_state_storage WHERE csrf_state = $1 RETURNING pkce_code_verifier,return_url"#,
     )
     .bind(state.secret())
     .fetch_one(&db_pool)
@@ -173,17 +174,17 @@ pub async fn oauth_return<T>(
 
     // Check if user exists in database
     // If not, create a new user
-    let query: sqlx::Result<(i64,), _> = sqlx::query_as(r#"SELECT id FROM users WHERE email=?"#)
+    let query: sqlx::Result<(i32,), _> = sqlx::query_as(r#"SELECT id FROM users WHERE email=$1"#)
         .bind(email.as_str())
         .fetch_one(&db_pool)
         .await;
     let user_id = if let Ok(query) = query {
         query.0
     } else {
-        let query: (i64,) =
-            sqlx::query_as("INSERT INTO users (email, picture) VALUES (?1, ?2) RETURNING id")
-                .bind(email.clone())
-                .bind(picture.clone())
+        let query: (i32,) =
+            sqlx::query_as("INSERT INTO users (email, picture) VALUES ($1, $2) RETURNING id")
+                .bind(email)
+                .bind(picture)
                 .fetch_one(&db_pool)
                 .await?;
         query.0
@@ -193,50 +194,43 @@ pub async fn oauth_return<T>(
     let session_token_p1 = Uuid::new_v4().to_string();
     let session_token_p2 = Uuid::new_v4().to_string();
     let session_token = [session_token_p1.as_str(), "_", session_token_p2.as_str()].concat();
-    let headers = axum::response::AppendHeaders([(
+    let headers = AppendHeaders([(
         axum::http::header::SET_COOKIE,
         "session_token=".to_owned()
             + &*session_token
             + "; path=/; httponly; secure; samesite=strict",
     )]);
-    let now = Utc::now().timestamp();
+    let now = Utc::now();
 
-    sqlx::query(
+    let x = sqlx::query(
         "INSERT INTO user_sessions
         (session_token_p1, session_token_p2, user_id, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?);",
+        VALUES ($1, $2, $3, $4, $5);",
     )
     .bind(session_token_p1)
     .bind(session_token_p2)
     .bind(user_id)
     .bind(now)
-    .bind(now + 60 * 60 * 24)
+    .bind(now + chrono::Duration::days(1))
     .execute(&db_pool)
     .await?;
+    println!("{x:?}");
 
-    let user_data = UserData {
-        user_id,
-        user_email: email,
-        user_picture: picture,
-    };
-    request.extensions_mut().insert(Some(user_data.clone()));
-    request.extensions_mut().insert(user_data);
-
-    dbg!(request.extensions());
-
-    Ok((headers, Redirect::to(return_url.as_str())))
+    println!("{return_url}");
+    Ok((headers, Redirect::temporary(&return_url)))
 }
 
 pub async fn logout(
     cookie: TypedHeader<Cookie>,
-    State(db_pool): State<SqlitePool>,
+    State(db_pool): State<PgPool>,
 ) -> Result<impl IntoResponse> {
     if let Some(session_token) = cookie.get("session_token") {
         let session_token_1 = session_token.split('_').nth(0);
-        let _ = sqlx::query("DELETE FROM user_sessions WHERE session_token_1 = ?")
+        let x = sqlx::query("DELETE FROM user_sessions WHERE session_token_p1 = $1")
             .bind(session_token_1)
             .execute(&db_pool)
             .await;
+        println!("{x:?}")
     }
     let headers = axum::response::AppendHeaders([(
         axum::http::header::SET_COOKIE,

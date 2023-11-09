@@ -1,17 +1,26 @@
+version: '3'
 services:
-    axum-oauth-docker:
-        container_name: axum-oauth-docker
-        build:
-            context: .
-        ports:
-            - "127.0.0.1:3011:3011"
-        restart: always
-        volumes:
-            - type: bind
-              source: ./.env
-              target: /opt/.env
-              read_only: true
-            - type: bind
-              source: ./db
-              target: /opt/db
-              read_only: false
+  api:
+    image: ghcr.io/joseburgosguntin/axum-oauth-docker
+    environment:
+      DATABASE_URL: "postgres://postgres:${POSTGRES_PASSWORD}@db:5432"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+  db:
+    image: postgres:15.2-alpine
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+
+volumes:
+  db:
+    driver: local

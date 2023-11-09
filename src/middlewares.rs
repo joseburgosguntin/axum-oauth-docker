@@ -10,67 +10,69 @@ use axum::{
     response::{IntoResponse, Redirect},
 };
 use chrono::Utc;
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 pub async fn inject_user_data<T>(
-    State(db_pool): State<SqlitePool>,
+    State(db_pool): State<PgPool>,
     cookie: Option<TypedHeader<Cookie>>,
     mut request: Request<T>,
     next: Next<T>,
 ) -> Result<impl IntoResponse> {
-    if let Some(cookie) = cookie {
-        if let Some(session_token) = cookie.get("session_token") {
-            let session_token: Vec<&str> = session_token.split('_').collect();
-            let query: sqlx::Result<(i64, i64, String)> = sqlx::query_as(
-                r#"SELECT user_id,expires_at,session_token_p2 FROM user_sessions WHERE session_token_p1=?"#,
+    println!("injecting user data");
+    if let Some((cookie_p1, cookie_p2)) = cookie
+        .as_ref()
+        .and_then(|cookie| cookie.get("session_token").map(|s| s.split('_')))
+        .and_then(|mut session_token| dbg!(session_token.next().zip(session_token.next())))
+    {
+        let query: sqlx::Result<(i32, chrono::DateTime<Utc>, String)> = sqlx::query_as(
+                r#"SELECT user_id,expires_at,session_token_p2 FROM user_sessions WHERE session_token_p1=$1"#,
             )
-            .bind(session_token[0])
+            .bind(cookie_p1)
             .fetch_one(&db_pool)
             .await;
+        println!("{query:?}");
 
-            if let Ok(query) = query {
-                if let Ok(session_token_p2_db) = query.2.as_bytes().try_into() {
-                    if let Ok(session_token_p2_cookie) = session_token
-                        .get(1)
-                        .copied()
-                        .unwrap_or_default()
-                        .as_bytes()
-                        .try_into()
-                    {
-                        if constant_time_eq::constant_time_eq_n::<36>(
-                            session_token_p2_cookie,
-                            session_token_p2_db,
-                        ) {
-                            let user_id = query.0;
-                            let expires_at = query.1;
-                            if expires_at > Utc::now().timestamp() {
-                                let query: sqlx::Result<(String, String)> = sqlx::query_as(
-                                    r#"SELECT email, picture FROM users WHERE id=?"#,
-                                )
-                                .bind(user_id)
-                                .fetch_one(&db_pool)
-                                .await;
-                                if let Ok(query) = query {
-                                    let user_data = UserData {
-                                        user_id,
-                                        user_email: query.0,
-                                        user_picture: query.1,
-                                    };
-                                    request.extensions_mut().insert(Some(user_data.clone()));
-                                    request.extensions_mut().insert(user_data);
-                                }
-                            }
-                        }
-                    }
-                }
+        if let Some(user_id) = query
+            .as_ref()
+            .ok()
+            .and_then(|(user_id, expires_at, db_p2)| {
+                db_p2
+                    .as_bytes()
+                    .try_into()
+                    .ok()
+                    .map(|array_db_p2| (user_id, expires_at, array_db_p2))
+            })
+            .zip(cookie_p2.as_bytes().try_into().ok())
+            .and_then(|((user_id, expires_at, array_p2_db), array_p2_cookie)| {
+                constant_time_eq::constant_time_eq_n::<36>(array_p2_cookie, array_p2_db)
+                    .then_some((*user_id, expires_at))
+            })
+            .and_then(|(user_id, expires_at)| (expires_at > &Utc::now()).then_some(user_id))
+        {
+            let query: sqlx::Result<(String, String)> =
+                sqlx::query_as(r#"SELECT email, picture FROM users WHERE id=$1"#)
+                    .bind(user_id)
+                    .fetch_one(&db_pool)
+                    .await;
+            if let Ok((user_email, user_picture)) = query {
+                println!("got user data");
+                let user_data = UserData {
+                    user_id,
+                    user_email,
+                    user_picture,
+                };
+                request.extensions_mut().insert(Some(user_data.clone()));
+                request.extensions_mut().insert(user_data);
             }
         }
     }
+    println!("{:?}", request.extensions().get::<Option<UserData>>());
 
     Ok(next.run(request).await)
 }
 
 pub async fn check_auth<T>(request: Request<T>, next: Next<T>) -> Result<impl IntoResponse> {
+    println!("checking auth");
     if request
         .extensions()
         .get::<Option<UserData>>()
