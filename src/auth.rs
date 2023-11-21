@@ -10,9 +10,10 @@ use anyhow::anyhow;
 use axum::{
     extract::{Extension, Host, Query, State, TypedHeader},
     headers::Cookie,
-    http::HeaderName,
-    response::{AppendHeaders, IntoResponse, Redirect},
+    response::{AppendHeaders, IntoResponse, IntoResponseParts, Redirect},
 };
+use tracing::{info, instrument};
+
 use axum_extra::extract::PrivateCookieJar;
 use chrono::Utc;
 use dotenvy::var;
@@ -25,6 +26,7 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+#[instrument]
 fn get_client(hostname: String) -> Result<BasicClient> {
     const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
     const TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
@@ -49,6 +51,7 @@ fn get_client(hostname: String) -> Result<BasicClient> {
     Ok(client)
 }
 
+#[instrument]
 pub async fn login(
     Extension(user_data): Extension<Option<UserData>>,
     Query(mut params): Query<HashMap<String, String>>,
@@ -76,7 +79,7 @@ pub async fn login(
         .set_pkce_challenge(pkce_code_challenge)
         .url();
 
-    let b = sqlx::query(
+    _ = sqlx::query(
         r#"
         INSERT INTO oauth2_state_storage(csrf_state, pkce_code_verifier, return_url) 
         VALUES ($1, $2, $3)"#,
@@ -87,16 +90,15 @@ pub async fn login(
     .execute(&db_pool)
     .await?;
 
-    println!("{b:?}");
-
     Ok(Redirect::to(authorize_url.as_str()))
 }
 
+#[instrument]
 pub async fn oauth_return(
     Query(mut params): Query<HashMap<String, String>>,
     State(db_pool): State<PgPool>,
     Host(hostname): Host,
-) -> Result<(AppendHeaders<[(HeaderName, String); 1]>, Redirect)> {
+) -> Result<(impl IntoResponseParts, Redirect)> {
     let state = CsrfToken::new(
         params
             .remove("state")
@@ -127,12 +129,13 @@ pub async fn oauth_return(
     //     .execute(&db_pool)
     //     .await;
 
+    info!("4b");
     let pkce_code_verifier = query.0;
     let return_url = query.1;
     let pkce_code_verifier = PkceCodeVerifier::new(pkce_code_verifier);
 
     // Exchange the code with a token.
-    let client = get_client(hostname)?;
+    let client = get_client(hostname.clone())?;
     let token_response = tokio::task::spawn_blocking(move || {
         client
             .exchange_code(code)
@@ -198,7 +201,7 @@ pub async fn oauth_return(
         axum::http::header::SET_COOKIE,
         "session_token=".to_owned()
             + &*session_token
-            + "; path=/; httponly; secure; samesite=strict",
+            + "; path=/; httponly; secure; SameSite=Strict",
     )]);
     let now = Utc::now();
 
@@ -217,9 +220,21 @@ pub async fn oauth_return(
     println!("{x:?}");
 
     println!("{return_url}");
-    Ok((headers, Redirect::temporary(&return_url)))
+
+    let protocol = if hostname.starts_with("localhost") || hostname.starts_with("127.0.0.1") {
+        "http"
+    } else {
+        "https"
+    };
+    Ok((
+        headers,
+        Redirect::temporary(&format!(
+            "{protocol}://{hostname}/cookies?return_url={return_url}"
+        )),
+    ))
 }
 
+#[instrument]
 pub async fn logout(
     cookie: TypedHeader<Cookie>,
     State(db_pool): State<PgPool>,

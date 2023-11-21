@@ -1,0 +1,17 @@
+<head>
+  <script src="https://unpkg.com/hyperscript.org@0.9.12"></script>
+  <link 
+    href="https://cdn.jsdelivr.net/npm/daisyui@3.9.4/dist/full.css" 
+    rel="stylesheet" 
+    type="text/css" 
+  />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Redirecting | My Site</title>
+</head>
+
+{% match return_url %}
+{% when CookiesUrl::Success with (success_url) %}
+  <p _="on load go to url {{ success_url }}">Success Redirecting</p>
+{% when CookiesUrl::Fail with (fail_url) %}
+  <p _="on load go to url {{ fail_url }} ">Fail Redirecting</p>
+{% endmatch %}
