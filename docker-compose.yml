@@ -4,6 +4,8 @@ services:
     image: ghcr.io/joseburgosguntin/axum-oauth-docker
     environment:
       DATABASE_URL: "postgres://postgres:${POSTGRES_PASSWORD}@db:5432"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
     build:
       context: .
       dockerfile: Dockerfile
