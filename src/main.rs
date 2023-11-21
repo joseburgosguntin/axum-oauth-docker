@@ -8,6 +8,8 @@ use crate::middlewares::{check_auth, inject_user_data};
 use crate::pages::{about, cookies, index, profile};
 use axum::{extract::FromRef, middleware, routing::get, Extension, Router};
 use sqlx::PgPool;
+use tower_http::trace::{self, TraceLayer};
+use tracing::Level;
 
 #[derive(Clone, FromRef)]
 pub struct AppState {
@@ -23,6 +25,12 @@ pub struct UserData {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .with_max_level(tracing::Level::DEBUG)
+        .compact()
+        .init();
+
     let database_url = dotenvy::var("DATABASE_URL")?;
     let db_pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
@@ -48,9 +56,15 @@ async fn main() -> anyhow::Result<()> {
             app_state.clone(),
             inject_user_data,
         ))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(trace::DefaultOnResponse::new().level(Level::INFO)),
+        )
         .with_state(app_state)
         .layer(Extension(user_data));
     let bind_addr = &"0.0.0.0:3000".parse()?;
+    tracing::info!("listening on {}", bind_addr);
     axum::Server::bind(bind_addr)
         .serve(app.into_make_service())
         .await?;

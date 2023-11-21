@@ -20,3 +20,6 @@ askama = { version = "0.12.1", features = ["with-axum"] }
 askama_axum = "0.3.0"
 axum-extra = { version = "0.8.0", features = ["cookie-private"] }
 reqwest = "0.11.22"
+tracing = "0.1.40" 
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"]} 
+tower-http = { version = "0.4.4", features = ["trace"] }

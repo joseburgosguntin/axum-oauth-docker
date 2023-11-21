@@ -11,18 +11,20 @@ use axum::{
 };
 use chrono::Utc;
 use sqlx::PgPool;
+use std::fmt::Debug;
+use tracing::{debug, info, instrument};
 
-pub async fn inject_user_data<T>(
+#[instrument]
+pub async fn inject_user_data<T: Debug>(
     State(db_pool): State<PgPool>,
     cookie: Option<TypedHeader<Cookie>>,
     mut request: Request<T>,
     next: Next<T>,
 ) -> Result<impl IntoResponse> {
-    println!("injecting user data");
     if let Some((cookie_p1, cookie_p2)) = cookie
         .as_ref()
         .and_then(|cookie| cookie.get("session_token").map(|s| s.split('_')))
-        .and_then(|mut session_token| dbg!(session_token.next().zip(session_token.next())))
+        .and_then(|mut session_token| session_token.next().zip(session_token.next()))
     {
         let query: sqlx::Result<(i32, chrono::DateTime<Utc>, String)> = sqlx::query_as(
                 r#"SELECT user_id,expires_at,session_token_p2 FROM user_sessions WHERE session_token_p1=$1"#,
@@ -30,7 +32,7 @@ pub async fn inject_user_data<T>(
             .bind(cookie_p1)
             .fetch_one(&db_pool)
             .await;
-        println!("{query:?}");
+        tracing::debug!(?query);
 
         if let Some(user_id) = query
             .as_ref()
@@ -55,32 +57,35 @@ pub async fn inject_user_data<T>(
                     .fetch_one(&db_pool)
                     .await;
             if let Ok((user_email, user_picture)) = query {
-                println!("got user data");
                 let user_data = UserData {
                     user_id,
                     user_email,
                     user_picture,
                 };
+                debug!(?user_data);
                 request.extensions_mut().insert(Some(user_data.clone()));
                 request.extensions_mut().insert(user_data);
             }
         }
     }
-    println!("{:?}", request.extensions().get::<Option<UserData>>());
+    let maybe_user_data = request.extensions().get::<Option<UserData>>();
+    debug!(?maybe_user_data);
 
     Ok(next.run(request).await)
 }
 
-pub async fn check_auth<T>(request: Request<T>, next: Next<T>) -> Result<impl IntoResponse> {
-    println!("checking auth");
+#[instrument]
+pub async fn check_auth<T: Debug>(request: Request<T>, next: Next<T>) -> Result<impl IntoResponse> {
     if request
         .extensions()
         .get::<Option<UserData>>()
         .ok_or(anyhow!("check_auth: extensions have no UserData"))?
         .is_some()
     {
+        info!("Authorized");
         Ok(next.run(request).await)
     } else {
+        info!("Redirect to login");
         let login_url = "/login?return_url=".to_owned() + &*request.uri().to_string();
         Ok(Redirect::to(login_url.as_str()).into_response())
     }
