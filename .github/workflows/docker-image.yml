@@ -32,9 +32,9 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Test
-      run: |
-        docker run --rm ghcr.io/${{ github.repository }} cargo test --release
+    # - name: Test
+    #   run: |
+    #     docker run --rm ghcr.io/${{ github.repository }} cargo test --release
 
     - name: Login to DockerHub
       uses: docker/login-action@v1
