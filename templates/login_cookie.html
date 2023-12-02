@@ -9,9 +9,4 @@
   <title>Redirecting | My Site</title>
 </head>
 
-{% match return_url %}
-{% when CookiesUrl::Success with (success_url) %}
-  <p _="on load go to url {{ success_url }}">Success Redirecting</p>
-{% when CookiesUrl::Fail with (fail_url) %}
-  <p _="on load go to url {{ fail_url }} ">Fail Redirecting</p>
-{% endmatch %}
+<p _="on load go to url {{ return_url }}">Redirecting</p>

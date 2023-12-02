@@ -5,7 +5,7 @@ mod pages;
 
 use crate::auth::{login, logout, oauth_return};
 use crate::middlewares::{check_auth, inject_user_data};
-use crate::pages::{about, cookies, index, profile};
+use crate::pages::{about, index, login_cookie, profile};
 use axum::{extract::FromRef, middleware, routing::get, Extension, Router};
 use sqlx::PgPool;
 use tower_http::trace::{self, TraceLayer};
@@ -50,8 +50,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/about", get(about))
         .route("/login", get(login))
         .route("/oauth_return", get(oauth_return))
+        .route("/login_cookie", get(login_cookie))
         .route("/logout", get(logout))
-        .route("/cookies", get(cookies))
         .layer(middleware::from_fn_with_state(
             app_state.clone(),
             inject_user_data,

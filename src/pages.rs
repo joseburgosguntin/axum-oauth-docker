@@ -1,31 +1,29 @@
-use std::collections::HashMap;
-
 use super::UserData;
+use crate::auth::ReturnUrl;
 use askama::Template;
 use axum::{
-    extract::{Extension, Host, Query},
-    http::Request,
+    extract::{Extension, Query},
+    http::Uri,
 };
 
 #[derive(Template)]
 #[template(path = "layout.html")]
 struct Layout {
-    login_return_url: String,
+    login_return_url: Uri,
     maybe_user_data: Option<UserData>,
 }
 
 #[derive(Template)]
 #[template(path = "index.html")]
 pub struct Index {
-    login_return_url: String,
+    login_return_url: Uri,
     maybe_user_data: Option<UserData>,
 }
 
-pub async fn index<T: std::fmt::Debug>(
+pub async fn index(
+    login_return_url: Uri,
     Extension(maybe_user_data): Extension<Option<UserData>>,
-    request: Request<T>,
 ) -> Index {
-    let login_return_url = "?return_url=".to_owned() + &*request.uri().to_string();
     Index {
         login_return_url,
         maybe_user_data,
@@ -35,15 +33,14 @@ pub async fn index<T: std::fmt::Debug>(
 #[derive(Template)]
 #[template(path = "about.html")]
 pub struct About {
-    login_return_url: String,
+    login_return_url: Uri,
     maybe_user_data: Option<UserData>,
 }
 
-pub async fn about<T>(
+pub async fn about(
+    login_return_url: Uri,
     Extension(maybe_user_data): Extension<Option<UserData>>,
-    request: Request<T>,
 ) -> About {
-    let login_return_url = "?return_url=".to_owned() + &*request.uri().to_string();
     About {
         login_return_url,
         maybe_user_data,
@@ -53,13 +50,16 @@ pub async fn about<T>(
 #[derive(Template)]
 #[template(path = "profile.html")]
 pub struct Profile {
-    login_return_url: String,
+    login_return_url: Uri,
     maybe_user_data: Option<UserData>,
     user_data: UserData,
 }
 
-pub async fn profile<T>(Extension(user_data): Extension<UserData>, request: Request<T>) -> Profile {
-    let login_return_url = "?return_url=".to_owned() + &*request.uri().to_string();
+#[rustfmt::skip]
+pub async fn profile(
+    login_return_url: Uri, 
+    Extension(user_data): Extension<UserData>
+) -> Profile {
     Profile {
         login_return_url,
         maybe_user_data: Some(user_data.clone()),
@@ -67,30 +67,15 @@ pub async fn profile<T>(Extension(user_data): Extension<UserData>, request: Requ
     }
 }
 
-enum CookiesUrl {
-    Success(String),
-    Fail(String),
-}
-
 #[derive(Template)]
-#[template(path = "cookies.html")]
-pub struct Cookies {
-    return_url: CookiesUrl,
+#[template(path = "login_cookie.html")]
+pub struct LoginCookie {
+    return_url: Box<str>,
 }
 
-pub async fn cookies(
-    Host(hostname): Host,
-    Query(params): Query<HashMap<String, String>>,
-) -> Cookies {
-    let protocol = if hostname.starts_with("localhost") || hostname.starts_with("127.0.0.1") {
-        "http"
-    } else {
-        "https"
-    };
-    Cookies {
-        return_url: params
-            .get("return_url")
-            .map(|x| CookiesUrl::Success(x.to_string()))
-            .unwrap_or(CookiesUrl::Fail(format!("{protocol}://{hostname}/"))),
-    }
+#[rustfmt::skip]
+pub async fn login_cookie(
+    Query(ReturnUrl { return_url }): Query<ReturnUrl>
+) -> LoginCookie {
+    LoginCookie { return_url }
 }

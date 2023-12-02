@@ -22,21 +22,25 @@ use oauth2::{
     CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope,
     TokenResponse, TokenUrl,
 };
+use serde::Deserialize;
 use sqlx::PgPool;
-use std::collections::HashMap;
 use uuid::Uuid;
 
-#[instrument]
-fn get_client(hostname: String) -> Result<BasicClient> {
-    const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
-    const TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
-    let protocol = if hostname.starts_with("localhost") || hostname.starts_with("127.0.0.1") {
+fn base_url(Host(hostname): Host) -> String {
+    let scheme = if hostname.starts_with("localhost") || hostname.starts_with("127.0.0.1") {
         "http"
     } else {
         "https"
     };
+    format!("{scheme}://{hostname}")
+}
 
-    let redirect_url = format!("{}://{}/oauth_return", protocol, hostname);
+#[instrument]
+fn get_client(host: Host) -> Result<BasicClient> {
+    const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+    const TOKEN_URL: &str = "https://www.googleapis.com/oauth2/v3/token";
+
+    let redirect_url = format!("{}/oauth_return", base_url(host));
     const REVOCATION_URL: &str = "https://oauth2.googleapis.com/revoke";
 
     // Set up the config for the Google OAuth2 process.
@@ -51,24 +55,26 @@ fn get_client(hostname: String) -> Result<BasicClient> {
     Ok(client)
 }
 
+#[derive(Deserialize)]
+pub struct ReturnUrl {
+    pub return_url: Box<str>,
+}
+
 #[instrument]
 pub async fn login(
-    Extension(user_data): Extension<Option<UserData>>,
-    Query(mut params): Query<HashMap<String, String>>,
     State(db_pool): State<PgPool>,
-    Host(hostname): Host,
+    host: Host,
+    Query(ReturnUrl { return_url }): Query<ReturnUrl>,
+    Extension(user_data): Extension<Option<UserData>>,
 ) -> Result<Redirect> {
+    // check if already authenticated
     if user_data.is_some() {
-        // check if already authenticated
         return Ok(Redirect::to("/"));
     }
 
-    let return_url = params
-        .remove("return_url")
-        .unwrap_or_else(|| "/".to_string());
     // TODO: check if return_url is valid
 
-    let client = get_client(hostname)?;
+    let client = get_client(host)?;
 
     let (pkce_code_challenge, pkce_code_verifier) = PkceCodeChallenge::new_random_sha256();
 
@@ -93,24 +99,22 @@ pub async fn login(
     Ok(Redirect::to(authorize_url.as_str()))
 }
 
+#[derive(Deserialize)]
+pub struct OAuthReturn {
+    state: String,
+    code: String,
+}
+
 #[instrument]
 pub async fn oauth_return(
-    Query(mut params): Query<HashMap<String, String>>,
     State(db_pool): State<PgPool>,
-    Host(hostname): Host,
+    host: Host,
+    Query(OAuthReturn { state, code }): Query<OAuthReturn>,
 ) -> Result<(impl IntoResponseParts, Redirect)> {
-    let state = CsrfToken::new(
-        params
-            .remove("state")
-            .ok_or(anyhow!("OAuth: without state"))?,
-    );
-    let code = AuthorizationCode::new(
-        params
-            .remove("code")
-            .ok_or(anyhow!("OAuth: without code"))?,
-    );
+    let state = CsrfToken::new(state);
+    let code = AuthorizationCode::new(code);
 
-    let query: (String, String) = sqlx::query_as(
+    let (pkce_code_verifier, return_url): (String, String) = sqlx::query_as(
         r#"DELETE FROM oauth2_state_storage WHERE csrf_state = $1 RETURNING pkce_code_verifier,return_url"#,
     )
     .bind(state.secret())
@@ -130,12 +134,10 @@ pub async fn oauth_return(
     //     .await;
 
     info!("4b");
-    let pkce_code_verifier = query.0;
-    let return_url = query.1;
     let pkce_code_verifier = PkceCodeVerifier::new(pkce_code_verifier);
 
     // Exchange the code with a token.
-    let client = get_client(hostname.clone())?;
+    let client = get_client(host.clone())?;
     let token_response = tokio::task::spawn_blocking(move || {
         client
             .exchange_code(code)
@@ -221,15 +223,11 @@ pub async fn oauth_return(
 
     println!("{return_url}");
 
-    let protocol = if hostname.starts_with("localhost") || hostname.starts_with("127.0.0.1") {
-        "http"
-    } else {
-        "https"
-    };
     Ok((
         headers,
         Redirect::temporary(&format!(
-            "{protocol}://{hostname}/cookies?return_url={return_url}"
+            "{}/login_cookie?return_url={return_url}",
+            base_url(host)
         )),
     ))
 }

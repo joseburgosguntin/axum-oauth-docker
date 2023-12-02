@@ -40,7 +40,7 @@
         </ul>
       </div>
     {% when None %}
-      <a href="/login{{ login_return_url }}">Login or signup</a>
+      <a href="/login?return_url={{ login_return_url }}">Login or signup</a>
     {% endmatch %}
   </div>
 </div>
