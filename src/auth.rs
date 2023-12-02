@@ -12,7 +12,6 @@ use axum::{
     headers::Cookie,
     response::{AppendHeaders, IntoResponse, IntoResponseParts, Redirect},
 };
-use tracing::{info, instrument};
 
 use axum_extra::extract::PrivateCookieJar;
 use chrono::Utc;
@@ -24,6 +23,7 @@ use oauth2::{
 };
 use serde::Deserialize;
 use sqlx::PgPool;
+use tracing::{debug, instrument};
 use uuid::Uuid;
 
 fn base_url(Host(hostname): Host) -> String {
@@ -71,10 +71,13 @@ pub async fn login(
     if user_data.is_some() {
         return Ok(Redirect::to("/"));
     }
+    debug!("not logged in");
 
     // TODO: check if return_url is valid
 
+    debug!(?host);
     let client = get_client(host)?;
+    debug!("got client");
 
     let (pkce_code_challenge, pkce_code_verifier) = PkceCodeChallenge::new_random_sha256();
 
@@ -95,6 +98,7 @@ pub async fn login(
     .bind(return_url)
     .execute(&db_pool)
     .await?;
+    debug!("added oauth2_state");
 
     Ok(Redirect::to(authorize_url.as_str()))
 }

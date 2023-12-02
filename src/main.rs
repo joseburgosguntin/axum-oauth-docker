@@ -9,7 +9,7 @@ use crate::pages::{about, index, login_cookie, profile};
 use axum::{extract::FromRef, middleware, routing::get, Extension, Router};
 use sqlx::PgPool;
 use tower_http::trace::{self, TraceLayer};
-use tracing::Level;
+use tracing::{info, Level};
 
 #[derive(Clone, FromRef)]
 pub struct AppState {
@@ -27,8 +27,8 @@ pub struct UserData {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_target(false)
-        .with_max_level(tracing::Level::DEBUG)
-        .compact()
+        .with_max_level(Level::DEBUG)
+        .pretty()
         .init();
 
     let database_url = dotenvy::var("DATABASE_URL")?;
@@ -64,7 +64,7 @@ async fn main() -> anyhow::Result<()> {
         .with_state(app_state)
         .layer(Extension(user_data));
     let bind_addr = &"0.0.0.0:3000".parse()?;
-    tracing::info!("listening on {}", bind_addr);
+    info!("listening on {}", bind_addr);
     axum::Server::bind(bind_addr)
         .serve(app.into_make_service())
         .await?;
