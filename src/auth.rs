@@ -137,7 +137,6 @@ pub async fn oauth_return(
     //     .execute(&db_pool)
     //     .await;
 
-    info!("4b");
     let pkce_code_verifier = PkceCodeVerifier::new(pkce_code_verifier);
 
     // Exchange the code with a token.
